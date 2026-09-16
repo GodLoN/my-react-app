@@ -1,0 +1,187 @@
+trigger:
+  - main
+
+pool:
+  name: SelfHostedPool
+
+stages:
+
+# ============================================================
+# STAGE 1: BUILD
+# ============================================================
+- stage: Build
+  displayName: 'Build React Application'
+
+  jobs:
+    - job: BuildReact
+      displayName: 'Build React App'
+
+      steps:
+        - checkout: self
+
+        - task: NodeTool@0
+          displayName: 'Install Node.js 20 LTS'
+          inputs:
+            versionSpec: '20.x'
+
+        - script: |
+            node --version
+            npm --version
+
+            npm ci
+
+            npm run build
+
+            test -f build/index.html
+
+            echo "Build verification successful."
+          displayName: 'Install dependencies and build React app'
+
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Build Artifact'
+          inputs:
+            targetPath: '$(Build.SourcesDirectory)/build'
+            artifact: 'react-build'
+            publishLocation: 'pipeline'
+
+
+# ============================================================
+# STAGE 2: TEST
+# ============================================================
+- stage: Test
+  displayName: 'Test React Application'
+  dependsOn: Build
+
+  jobs:
+    - job: TestReact
+      displayName: 'Run React Tests'
+
+      steps:
+        - checkout: self
+
+        - task: NodeTool@0
+          displayName: 'Install Node.js 20 LTS'
+          inputs:
+            versionSpec: '20.x'
+
+        - script: |
+            node --version
+            npm --version
+
+            npm ci
+
+            CI=true npm test -- --watchAll=false
+          displayName: 'Run React test suite'
+
+
+# ============================================================
+# STAGE 3: PUBLISH
+# ============================================================
+- stage: Publish
+  displayName: 'Publish Verified Build'
+  dependsOn: Test
+
+  jobs:
+    - job: PublishReact
+      displayName: 'Promote Verified Build Artifact'
+
+      steps:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Build Artifact'
+          inputs:
+            buildType: 'current'
+            artifactName: 'react-build'
+            targetPath: '$(Pipeline.Workspace)/react-build'
+
+        - script: |
+            test -f "$(Pipeline.Workspace)/react-build/index.html"
+
+            echo "Verified artifact contains index.html."
+            echo "Artifact contents:"
+            find "$(Pipeline.Workspace)/react-build" -maxdepth 2 -type f | sort
+          displayName: 'Verify Build Artifact'
+
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Verified React Artifact'
+          inputs:
+            targetPath: '$(Pipeline.Workspace)/react-build'
+            artifact: 'verified-react-build'
+            publishLocation: 'pipeline'
+
+
+# ============================================================
+# STAGE 4: DEPLOY
+# ============================================================
+- stage: Deploy
+  displayName: 'Deploy React Application'
+  dependsOn: Publish
+
+  jobs:
+    - job: DeployReact
+      displayName: 'Deploy to Nginx Web Server'
+
+      steps:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Verified React Artifact'
+          inputs:
+            buildType: 'current'
+            artifactName: 'verified-react-build'
+            targetPath: '$(Pipeline.Workspace)/verified-react-build'
+
+        - script: |
+            test -f "$(Pipeline.Workspace)/verified-react-build/index.html"
+
+            echo "Verified deployment artifact:"
+            find "$(Pipeline.Workspace)/verified-react-build" -maxdepth 2 -type f | sort
+          displayName: 'Verify Deployment Artifact'
+
+        - task: CopyFilesOverSSH@0
+          displayName: 'Copy React Build to Nginx Server'
+          inputs:
+            sshEndpoint: 'ubuntu-nginx-ssh'
+            sourceFolder: '$(Pipeline.Workspace)/verified-react-build'
+            contents: '**'
+            targetFolder: '/tmp/react-build-$(Build.BuildId)'
+            cleanTargetFolder: true
+            overwrite: true
+            readyTimeout: '20000'
+
+        - task: SSH@0
+          displayName: 'Install React Build and Verify Nginx'
+          inputs:
+            sshEndpoint: 'ubuntu-nginx-ssh'
+            runOptions: 'commands'
+            commands: |
+              set -e
+
+              BUILD_DIR="/tmp/react-build-$(Build.BuildId)"
+
+              echo "Checking staged deployment..."
+              test -f "$BUILD_DIR/index.html"
+
+              echo "Replacing existing React files..."
+              sudo find /var/www/html -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+
+              sudo cp -a "$BUILD_DIR"/. /var/www/html/
+
+              sudo chown -R www-data:www-data /var/www/html
+
+              sudo find /var/www/html -type d -exec chmod 755 {} \;
+              sudo find /var/www/html -type f -exec chmod 644 {} \;
+
+              echo "Validating Nginx configuration..."
+              sudo nginx -t
+
+              echo "Reloading Nginx..."
+              sudo systemctl reload nginx
+
+              echo "Verifying deployed index.html..."
+              test -f /var/www/html/index.html
+
+              echo "Verifying local HTTP response..."
+              curl -fsS http://127.0.0.1/ >/dev/null
+
+              echo "Deployment verification successful."
+
+              rm -rf "$BUILD_DIR"
+            readyTimeout: '20000'
