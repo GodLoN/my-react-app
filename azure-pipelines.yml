@@ -171,7 +171,7 @@ stages:
               sudo find /var/www/html -type f -exec chmod 644 {} \;
 
               echo "Validating Nginx configuration..."
-              sudo nginx -t
+              sudo nginx -t 2>&1
 
               echo "Reloading Nginx..."
               sudo systemctl reload nginx
