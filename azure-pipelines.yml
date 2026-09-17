@@ -140,10 +140,11 @@ stages:
           inputs:
             sshEndpoint: 'ubuntu-nginx-ssh'
             sourceFolder: '$(Pipeline.Workspace)/verified-react-build'
-            contents: '**'
+            contents: '**/*'
             targetFolder: '/tmp/react-build-$(Build.BuildId)'
             cleanTargetFolder: true
             overwrite: true
+            failOnEmptySource: true
             readyTimeout: '20000'
 
         - task: SSH@0
