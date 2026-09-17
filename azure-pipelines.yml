@@ -157,6 +157,30 @@ stages:
 
               BUILD_DIR="/tmp/react-build-$(Build.BuildId)"
 
+              echo "===== SSH SESSION DIAGNOSTICS ====="
+              echo "User:"
+              whoami
+
+              echo "UID:"
+              id
+
+              echo "Hostname:"
+              hostname
+
+              echo "Build directory:"
+              echo "$BUILD_DIR"
+
+              echo "Directory listing:"
+              ls -la "$BUILD_DIR" || true
+
+              echo "Index file:"
+              ls -l "$BUILD_DIR/index.html" || true
+
+              echo "Path resolution:"
+              readlink -f "$BUILD_DIR/index.html" || true
+
+              echo "==================================="
+
               echo "Checking staged deployment..."
               test -f "$BUILD_DIR/index.html"
 
