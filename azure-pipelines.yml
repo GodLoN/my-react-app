@@ -19,10 +19,10 @@ stages:
       steps:
         - checkout: self
 
-        - task: NodeTool@0
+        - task: UseNode@1
           displayName: 'Install Node.js 20 LTS'
           inputs:
-            versionSpec: '20.x'
+            version: '20.x'
 
         - script: |
             node --version
@@ -59,10 +59,10 @@ stages:
       steps:
         - checkout: self
 
-        - task: NodeTool@0
+        - task: UseNode@1
           displayName: 'Install Node.js 20 LTS'
           inputs:
-            versionSpec: '20.x'
+            version: '20.x'
 
         - script: |
             node --version
@@ -70,7 +70,7 @@ stages:
 
             npm ci
 
-            CI=true npm test -- --watchAll=false
+            CI=true npm test -- --watchAll=false --runInBand
           displayName: 'Run React test suite'
 
 
